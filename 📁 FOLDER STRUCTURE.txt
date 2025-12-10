@@ -1,0 +1,70 @@
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║              📁 Repository Structure 📁                     ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+📱 ROOT LEVEL (Launcher Files Only)
+   
+   🚀 START WiFi Cracker (GUI).pyw  ← START HERE!
+   🚀 START WiFi Cracker.bat        ← Alternative launcher
+   app.py                            ← Web server
+   requirements.txt                  ← Python dependencies
+   LICENSE                           ← License file
+   .gitignore                        ← Git ignore rules
+
+═══════════════════════════════════════════════════════════════
+
+📚 docs/ - Documentation
+   
+   • ICON_SETUP.md
+   • README.txt
+
+═══════════════════════════════════════════════════════════════
+
+🔧 scripts/ - Original CLI Scripts
+   
+   • bruteforce_attack/
+     - bruteforce_attack.py
+     - bruteforce_attack_timer.py
+   • dictionary_attack (Python script file)
+
+═══════════════════════════════════════════════════════════════
+
+⚙️ config/ - Configuration Files
+   
+   (Empty - for future configuration files)
+
+═══════════════════════════════════════════════════════════════
+
+🛠️ tools/ - Helper Tools and Flipper Zero CLI
+   
+   • flipperzero_protobuf_py/ (Flipper Zero protobuf library)
+   • src/ (CLI helper modules)
+     - cli_helpers.py
+     - helpers.py
+     - non_blocking_input.py
+   • clipper.py (Flipper CLI tool)
+   • rpc.py (RPC communication module)
+   • Create Desktop Shortcut.bat
+   • Create Icon Launcher.bat
+   • Create Launcher with Icon.ps1
+   • Create Launcher with Icon.vbs
+   • Create Shortcuts with Icons.bat
+   • Fix Icon.ps1
+   • Test Icon.ps1
+   • README.md
+   • README_ICONS.md
+   • requirements.txt
+
+═══════════════════════════════════════════════════════════════
+
+📁 Runtime Folders (Auto-created)
+   
+   • temp/ - Temporary files
+   • uploads/ - Uploaded files
+   • wordlists/ - Generated wordlists
+   • templates/ - Web interface
+
+═══════════════════════════════════════════════════════════════
+

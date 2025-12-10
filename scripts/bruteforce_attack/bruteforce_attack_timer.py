@@ -2,7 +2,15 @@ import os
 import subprocess
 import string
 import itertools
-import signal
+import sys
+import platform
+
+# Platform-specific timeout handling
+if platform.system() == 'Windows':
+    import threading
+    timeout_triggered = threading.Event()
+else:
+    import signal
 
 ascii_art = """
    ██╗    ██╗██╗███████╗██╗     ██████╗ ██████╗  █████╗ ██████╗ ██████╗ ███████╗██████╗ 
@@ -42,21 +50,39 @@ print("  -----------------------------------------------------------------------
 
 charset = string.printable  # Define the character set to be used
 
-def timeout_handler(signum, frame):
-    raise TimeoutError("Timeout expired. Password not found.")
-
 # Set the timeout to 120" = 2' (2 minutes is a very low time, and this is just for example) 
 timeout = 120
 
-# Set the manager of signals for SIGALRM (the alarm)
-signal.signal(signal.SIGALRM, timeout_handler)
-signal.alarm(timeout)
+# Platform-specific timeout setup
+if platform.system() == 'Windows':
+    # Windows: Use threading.Timer since SIGALRM is not available
+    def timeout_handler():
+        timeout_triggered.set()
+    
+    timer = threading.Timer(timeout, timeout_handler)
+    timer.daemon = True
+    timer.start()
+else:
+    # Unix/Linux/Mac: Use signal.SIGALRM
+    def timeout_handler(signum, frame):
+        raise TimeoutError("Timeout expired. Password not found.")
+    
+    signal.signal(signal.SIGALRM, timeout_handler)
+    signal.alarm(timeout)
 
 # Brute force attack
 try:
     password_length = 1
     while True:
+        # Check timeout on Windows
+        if platform.system() == 'Windows' and timeout_triggered.is_set():
+            raise TimeoutError("Timeout expired. Password not found.")
+        
         for password in itertools.product(charset, repeat=password_length):
+            # Check timeout on Windows during iteration
+            if platform.system() == 'Windows' and timeout_triggered.is_set():
+                raise TimeoutError("Timeout expired. Password not found.")
+            
             password = ''.join(password)
             result = subprocess.run(["hashcat", "-m", "22000", hc22000_file, password], capture_output=True)
             if "Cracked" in result.stdout.decode():
@@ -66,4 +92,8 @@ try:
 except TimeoutError as e:
     print(str(e))
 finally:
-    signal.alarm(0)
+    # Cleanup timeout
+    if platform.system() == 'Windows':
+        timer.cancel()
+    else:
+        signal.alarm(0)

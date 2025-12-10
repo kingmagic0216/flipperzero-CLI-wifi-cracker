@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Cracker - Web App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .flipper-section {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .flipper-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+        }
+
+        .status-indicator.connected {
+            background: #28a745;
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        .btn-small:hover {
+            background: #5568d3;
+        }
+
+        .pcap-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .pcap-item {
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .pcap-item:hover {
+            background: #f0f0f0;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+            background: #f8f9ff;
+            cursor: pointer;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #f0f0ff;
+            transform: scale(1.02);
+        }
+
+        .file-input-wrapper {
+            margin-bottom: 20px;
+        }
+
+        .file-input-label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .file-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        .file-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .file-name {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+            word-break: break-all;
+        }
+
+        .wordlist-options {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 20px;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+        }
+
+        .status.processing {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            color: #856404;
+        }
+
+        .status.success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .status.error, .status.failed {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            color: #721c24;
+        }
+
+        .status-message {
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .password-result {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            text-align: center;
+            word-break: break-all;
+            color: #28a745;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 25px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .upload-area {
+                padding: 20px;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔓 WiFi Cracker</h1>
+        <p class="subtitle">Crack WiFi passwords from Flipper Zero PCAP files</p>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('flipper')">📱 Flipper Zero</button>
+            <button class="tab" onclick="switchTab('manual')">📁 Manual Upload</button>
+        </div>
+
+        <!-- Flipper Zero Tab -->
+        <div id="flipper-tab" class="tab-content active">
+            <div class="flipper-section">
+                <div class="flipper-status">
+                    <span class="status-indicator" id="flipperStatus"></span>
+                    <span id="flipperStatusText">Checking for Flipper Zero...</span>
+                </div>
+                <button class="btn-small" onclick="checkFlipper()">🔄 Refresh</button>
+                <div id="flipperPcaps" class="pcap-list"></div>
+            </div>
+
+            <div class="file-input-wrapper">
+                <label class="file-input-label">Wordlist File (.txt) or Use Common Passwords</label>
+                <div class="wordlist-options">
+                    <button type="button" class="btn-small" onclick="useCommonWordlist()">Use Common Passwords</button>
+                    <input type="file" id="wordlistFileFlipper" class="file-input" accept=".txt" style="flex: 1;">
+                </div>
+                <div class="file-name" id="wordlistFileNameFlipper"></div>
+            </div>
+
+            <button type="button" class="btn" id="submitBtnFlipper" onclick="startCrackFlipper()">Start Cracking</button>
+        </div>
+
+        <!-- Manual Upload Tab -->
+        <div id="manual-tab" class="tab-content">
+            <form id="uploadForm">
+                <div class="file-input-wrapper">
+                    <label class="file-input-label">PCAP File (.pcap, .cap, .pcapng)</label>
+                    <div class="upload-area" id="pcapDropZone" ondrop="handleDrop(event, 'pcap')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+                        <p>📎 Drag & drop PCAP file here or click to browse</p>
+                        <input type="file" id="pcapFile" class="file-input" accept=".pcap,.cap,.pcapng" style="display: none;" onchange="handleFileSelect('pcap', this.files[0])">
+                    </div>
+                    <div class="file-name" id="pcapFileName"></div>
+                </div>
+
+                <div class="file-input-wrapper">
+                    <label class="file-input-label">Wordlist File (.txt) or Use Common Passwords</label>
+                    <div class="wordlist-options">
+                        <button type="button" class="btn-small" onclick="useCommonWordlist()">Use Common Passwords</button>
+                        <div class="upload-area" id="wordlistDropZone" ondrop="handleDrop(event, 'wordlist')" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" style="flex: 1; padding: 15px;">
+                            <p style="font-size: 12px;">📎 Drag & drop wordlist or click</p>
+                            <input type="file" id="wordlistFile" class="file-input" accept=".txt" style="display: none;" onchange="handleFileSelect('wordlist', this.files[0])">
+                        </div>
+                    </div>
+                    <div class="file-name" id="wordlistFileName"></div>
+                </div>
+
+                <button type="submit" class="btn" id="submitBtn">Start Cracking</button>
+            </form>
+        </div>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        let selectedPcapPath = null;
+        let selectedWordlistPath = null;
+
+        // Tab switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            if (tabName === 'flipper') {
+                document.querySelector('.tab').classList.add('active');
+                document.getElementById('flipper-tab').classList.add('active');
+                checkFlipper();
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('manual-tab').classList.add('active');
+            }
+        }
+
+        // Drag and drop handlers
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('dragover');
+        }
+
+        function handleDrop(e, type) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                if (type === 'pcap') {
+                    handleFileSelect('pcap', files[0]);
+                } else {
+                    handleFileSelect('wordlist', files[0]);
+                }
+            }
+        }
+
+        function handleFileSelect(type, file) {
+            if (type === 'pcap') {
+                document.getElementById('pcapFileName').textContent = `Selected: ${file.name}`;
+            } else {
+                document.getElementById('wordlistFileName').textContent = `Selected: ${file.name}`;
+                selectedWordlistPath = file;
+            }
+        }
+
+        // Click to browse
+        document.getElementById('pcapDropZone').addEventListener('click', () => {
+            document.getElementById('pcapFile').click();
+        });
+
+        document.getElementById('wordlistDropZone')?.addEventListener('click', () => {
+            document.getElementById('wordlistFile').click();
+        });
+
+        // Flipper Zero detection
+        async function checkFlipper() {
+            const statusIndicator = document.getElementById('flipperStatus');
+            const statusText = document.getElementById('flipperStatusText');
+            const pcapList = document.getElementById('flipperPcaps');
+            
+            statusText.textContent = 'Checking for Flipper Zero...';
+            statusIndicator.classList.remove('connected');
+            
+            try {
+                const response = await fetch('/flipper/detect');
+                const data = await response.json();
+                
+                if (data.found && data.paths.length > 0) {
+                    statusIndicator.classList.add('connected');
+                    const pathInfo = data.paths[0];
+                    const method = pathInfo.method || 'mounted_drive';
+                    let statusMsg = `✓ Flipper Zero found`;
+                    
+                    if (method === 'cli') {
+                        statusMsg += ' (via Flipper CLI)';
+                    } else if (method === 'serial') {
+                        statusMsg += ` (via ${pathInfo.device || 'COM port'})`;
+                    } else if (pathInfo.drive) {
+                        statusMsg += ` on drive ${pathInfo.drive}`;
+                    }
+                    
+                    statusText.textContent = statusMsg;
+                    
+                    // List PCAP files
+                    const pcapResponse = await fetch(`/flipper/pcaps?path=${encodeURIComponent(pathInfo.path)}&method=${encodeURIComponent(method)}`);
+                    const pcapData = await pcapResponse.json();
+                    
+                    if (pcapData.error) {
+                        pcapList.innerHTML = `<p style="color: #856404; padding: 10px; background: #fff3cd; border-radius: 6px;">⚠️ ${pcapData.error}</p>`;
+                    } else if (pcapData.files && pcapData.files.length > 0) {
+                        pcapList.innerHTML = '<p style="margin-bottom: 10px; font-weight: 600;">Available PCAP files:</p>';
+                        pcapData.files.forEach(file => {
+                            const item = document.createElement('div');
+                            item.className = 'pcap-item';
+                            item.innerHTML = `
+                                <div>
+                                    <strong>${file.name}</strong><br>
+                                    <small>${formatFileSize(file.size)} • ${file.modified ? formatDate(file.modified) : 'unknown date'}</small>
+                                </div>
+                                <button class="btn-small" onclick="selectFlipperPcap('${file.path}', '${file.name}')">Select</button>
+                            `;
+                            pcapList.appendChild(item);
+                        });
+                    } else {
+                        pcapList.innerHTML = '<p style="color: #666;">No PCAP files found. Run the EAPOL sniffer script on your Flipper Zero first.</p>';
+                    }
+                } else {
+                    statusText.textContent = '✗ Flipper Zero not detected.';
+                    pcapList.innerHTML = '<div style="padding: 10px; background: #f8d7da; border-radius: 6px; color: #721c24;"><strong>Tips:</strong><br>• Install Flipper CLI for best detection (see FLIPPER_DETECTION.md)<br>• Use qFlipper app to connect first<br>• Ensure USB cable supports data transfer<br>• Try Manual Upload tab as alternative</div>';
+                }
+            } catch (error) {
+                statusText.textContent = '✗ Error checking for Flipper Zero';
+                pcapList.innerHTML = '';
+            }
+        }
+
+        function selectFlipperPcap(path, name) {
+            selectedPcapPath = path;
+            document.getElementById('flipperPcaps').querySelectorAll('.pcap-item').forEach(item => {
+                item.style.background = 'white';
+            });
+            event.target.closest('.pcap-item').style.background = '#e8f5e9';
+            showStatus('success', `Selected: ${name}`, null);
+        }
+
+        async function startCrackFlipper() {
+            if (!selectedPcapPath) {
+                showStatus('error', 'Please select a PCAP file from your Flipper Zero');
+                return;
+            }
+
+            let wordlistFile = null;
+            const wordlistInput = document.getElementById('wordlistFileFlipper');
+            if (wordlistInput && wordlistInput.files.length > 0) {
+                wordlistFile = wordlistInput.files[0];
+            }
+
+            if (!wordlistFile && !selectedWordlistPath) {
+                // Generate common wordlist first
+                try {
+                    const commonResponse = await fetch('/wordlists/common');
+                    const commonData = await commonResponse.json();
+                    if (!commonData.success) {
+                        throw new Error('Failed to generate common wordlist');
+                    }
+                    selectedWordlistPath = commonData.path;
+                } catch (error) {
+                    showStatus('error', 'Please select a wordlist file or use common passwords');
+                    return;
+                }
+            }
+
+            // Download PCAP from Flipper
+            try {
+                showStatus('processing', 'Copying PCAP file from Flipper Zero...');
+                
+                const downloadResponse = await fetch(`/flipper/download?path=${encodeURIComponent(selectedPcapPath)}`);
+                const downloadData = await downloadResponse.json();
+                
+                if (!downloadData.success) {
+                    throw new Error(downloadData.error || 'Failed to download PCAP file');
+                }
+
+                // Upload files
+                const formData = new FormData();
+                
+                // Read downloaded file
+                const pcapResponse = await fetch(`/uploads/${downloadData.filename}`);
+                const pcapBlob = await pcapResponse.blob();
+                formData.append('pcap_file', pcapBlob, downloadData.original_name || downloadData.filename);
+                
+                // Add wordlist
+                if (wordlistFile) {
+                    formData.append('wordlist_file', wordlistFile);
+                } else {
+                    // Use common wordlist
+                    const wordlistResponse = await fetch(`/wordlists/${selectedWordlistPath.split('/').pop()}`);
+                    const wordlistBlob = await wordlistResponse.blob();
+                    formData.append('wordlist_file', wordlistBlob, 'common_passwords.txt');
+                }
+
+                submitBtnFlipper.disabled = true;
+                submitBtnFlipper.textContent = 'Uploading...';
+
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Upload failed');
+                }
+
+                pollStatus(data.job_id);
+            } catch (error) {
+                showStatus('error', `Error: ${error.message}`);
+                submitBtnFlipper.disabled = false;
+                submitBtnFlipper.textContent = 'Start Cracking';
+            }
+        }
+
+        async function useCommonWordlist() {
+            try {
+                showStatus('processing', 'Generating common passwords wordlist...');
+                const response = await fetch('/wordlists/common');
+                const data = await response.json();
+                if (data.success) {
+                    selectedWordlistPath = data.path;
+                    showStatus('success', `Common wordlist ready (${data.count} passwords). Click "Start Cracking" to use it.`);
+                } else {
+                    throw new Error('Failed to generate wordlist');
+                }
+            } catch (error) {
+                showStatus('error', 'Failed to generate common wordlist: ' + error.message);
+            }
+        }
+
+        // Manual upload form
+        const form = document.getElementById('uploadForm');
+        const pcapInput = document.getElementById('pcapFile');
+        const wordlistInput = document.getElementById('wordlistFile');
+        const pcapFileName = document.getElementById('pcapFileName');
+        const wordlistFileName = document.getElementById('wordlistFileName');
+        const submitBtn = document.getElementById('submitBtn');
+        const submitBtnFlipper = document.getElementById('submitBtnFlipper');
+        const statusDiv = document.getElementById('status');
+
+        wordlistInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                wordlistFileName.textContent = `Selected: ${e.target.files[0].name}`;
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!pcapInput.files[0]) {
+                showStatus('error', 'Please select a PCAP file');
+                return;
+            }
+
+            let wordlistFile = wordlistInput.files[0];
+            if (!wordlistFile && !selectedWordlistPath) {
+                showStatus('error', 'Please select a wordlist file or use common passwords');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('pcap_file', pcapInput.files[0]);
+
+            if (wordlistFile) {
+                formData.append('wordlist_file', wordlistFile);
+            } else {
+                // Use common wordlist
+                const commonResponse = await fetch('/wordlists/common');
+                const commonData = await commonResponse.json();
+                const wordlistBlob = await fetch(`/${commonData.path}`).then(r => r.blob());
+                formData.append('wordlist_file', wordlistBlob, 'common_passwords.txt');
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Uploading...';
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Upload failed');
+                }
+
+                pollStatus(data.job_id);
+            } catch (error) {
+                showStatus('error', `Error: ${error.message}`);
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Start Cracking';
+            }
+        });
+
+        function pollStatus(jobId) {
+            const interval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/status/${jobId}`);
+                    const data = await response.json();
+
+                    if (data.status === 'processing' || data.status === 'queued') {
+                        showStatus('processing', data.message);
+                    } else if (data.status === 'success') {
+                        clearInterval(interval);
+                        showStatus('success', data.message, data.password);
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Start Cracking';
+                        submitBtnFlipper.disabled = false;
+                        submitBtnFlipper.textContent = 'Start Cracking';
+                    } else if (data.status === 'error' || data.status === 'failed') {
+                        clearInterval(interval);
+                        showStatus(data.status, data.message);
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Start Cracking';
+                        submitBtnFlipper.disabled = false;
+                        submitBtnFlipper.textContent = 'Start Cracking';
+                    }
+                } catch (error) {
+                    clearInterval(interval);
+                    showStatus('error', `Error checking status: ${error.message}`);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Start Cracking';
+                    submitBtnFlipper.disabled = false;
+                    submitBtnFlipper.textContent = 'Start Cracking';
+                }
+            }, 2000);
+        }
+
+        function showStatus(type, message, password = null) {
+            statusDiv.className = `status ${type} show`;
+            
+            let html = `<div class="status-message">`;
+            if (type === 'processing') {
+                html += `<span class="spinner"></span>`;
+            }
+            html += `${message}</div>`;
+            
+            if (password) {
+                html += `<div class="password-result">Password: ${password}</div>`;
+            }
+            
+            statusDiv.innerHTML = html;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function formatDate(timestamp) {
+            const date = new Date(timestamp * 1000);
+            return date.toLocaleString();
+        }
+
+        // Check Flipper on page load
+        checkFlipper();
+    </script>
+</body>
+</html>

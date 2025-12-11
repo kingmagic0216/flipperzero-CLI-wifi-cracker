@@ -1,7 +1,7 @@
 # Fix WiFi Cracker shortcut icon
 $rootDir = Split-Path -Parent $PSScriptRoot
 $shortcutPath = Join-Path $rootDir "WiFi Cracker.lnk"
-$launcherPath = Join-Path $rootDir "🚀 START WiFi Cracker (GUI).pyw"
+$launcherPath = Join-Path $rootDir "start_wifi_cracker_gui.pyw"
 
 Write-Host "Fixing WiFi Cracker shortcut icon..." -ForegroundColor Cyan
 Write-Host ""

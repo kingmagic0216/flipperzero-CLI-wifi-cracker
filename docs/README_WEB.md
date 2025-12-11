@@ -17,11 +17,18 @@ Before running the web app, make sure you have:
 2. **hcxpcapngtool** (from hcxtools package)
    - Linux: `sudo apt-get install hcxtools`
    - macOS: `brew install hcxtools`
-   - Windows: Download from [hcxtools releases](https://github.com/ZerBea/hcxtools/releases)
+   - Windows: See [docs/INSTALL_TOOLS.md](docs/INSTALL_TOOLS.md) for installation instructions
+     - Recommended: Use WSL (`wsl --install` then `sudo apt-get install hcxtools`)
+     - Alternative: Check [hcxtools releases](https://github.com/ZerBea/hcxtools/releases) for Windows builds
 3. **hashcat** installed
    - Linux: `sudo apt-get install hashcat`
    - macOS: `brew install hashcat`
    - Windows: Download from [hashcat website](https://hashcat.net/hashcat/)
+     - See [docs/INSTALL_TOOLS.md](docs/INSTALL_TOOLS.md) for detailed instructions
+
+**Quick Install on Windows:**
+- Run `scripts/install/install_tools.ps1` (PowerShell) or `scripts/install/install_tools.bat` (CMD) for automated installation help
+- Or follow the manual steps in [docs/INSTALL_TOOLS.md](docs/INSTALL_TOOLS.md)
 
 ## Quick Start
 

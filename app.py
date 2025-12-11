@@ -117,6 +117,16 @@ def get_tool_command(tool_name):
     # Return original name if not found (will fail with better error message)
     return tool_name
 
+def windows_to_wsl_path(windows_path):
+    r"""Convert a Windows path to a WSL path (e.g. C:\Users -> /mnt/c/Users)"""
+    windows_path = os.path.abspath(windows_path)
+    drive, tail = os.path.splitdrive(windows_path)
+    drive = drive.lower().replace(':', '')
+    # Convert backslashes to forward slashes and prepend WSL mount point
+    # Handle both separator types just in case
+    tail = tail.replace('\\', '/')
+    return f'/mnt/{drive}{tail}'
+
 def allowed_file(filename, file_type='pcap'):
     if file_type == 'pcap':
         return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS_PCAP
@@ -144,19 +154,33 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
         jobs[job_id]['status'] = 'processing'
         jobs[job_id]['message'] = 'Converting PCAP to hc22000 format...'
         
+        # Validate PCAP file exists
+        if not os.path.exists(pcap_path):
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = f'PCAP file not found: {pcap_path}'
+            return
+        
+        if not os.path.isfile(pcap_path):
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = f'Invalid PCAP file path: {pcap_path}'
+            return
+        
+        # Ensure temp directory exists
+        temp_dir = os.path.join(os.path.dirname(__file__), 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+
         # Convert PCAP to hc22000
-        hc22000_file = os.path.join('temp', f'{job_id}.hc22000')
+        hc22000_file = os.path.join(temp_dir, f'{job_id}.hc22000')
         try:
             # Handle WSL commands (list format) vs regular commands (string)
             if isinstance(hcxpcapngtool_cmd, list):
                 # WSL command: ['wsl', 'hcxpcapngtool']
-                # Convert Windows path to WSL path if needed
+                # Convert Windows path to WSL path manually to avoid escaping issues
                 if platform.system() == 'Windows':
-                    # Convert Windows paths to WSL paths
-                    wsl_hc22000 = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(hc22000_file)], 
-                                                capture_output=True, text=True, timeout=5).stdout.strip()
-                    wsl_pcap = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(pcap_path)], 
-                                            capture_output=True, text=True, timeout=5).stdout.strip()
+                    wsl_hc22000 = windows_to_wsl_path(hc22000_file)
+                    wsl_pcap = windows_to_wsl_path(pcap_path)
+                    
                     cmd = hcxpcapngtool_cmd + ['-o', wsl_hc22000, wsl_pcap]
                 else:
                     cmd = hcxpcapngtool_cmd + ['-o', hc22000_file, pcap_path]
@@ -173,11 +197,17 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
             jobs[job_id]['status'] = 'error'
             jobs[job_id]['message'] = f'hcxpcapngtool not found. Please install hcxtools. See docs/INSTALL_TOOLS.md for installation instructions.'
             return
+        except subprocess.TimeoutExpired:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = 'PCAP conversion timed out after 5 minutes'
+            return
         
         if result.returncode != 0:
             jobs[job_id]['status'] = 'error'
             error_msg = result.stderr if result.stderr else result.stdout
-            jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}'
+            # Include command and paths in error for debugging
+            cmd_str = ' '.join(cmd) if isinstance(cmd, list) else str(cmd)
+            jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}\nCommand: {cmd_str}\nPCAP path: {pcap_path}'
             return
         
         jobs[job_id]['message'] = 'Running hashcat dictionary attack...'
@@ -187,10 +217,9 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
             # Handle WSL commands vs regular commands
             if isinstance(hashcat_cmd, list):
                 if platform.system() == 'Windows':
-                    wsl_hc22000 = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(hc22000_file)], 
-                                                capture_output=True, text=True, timeout=5).stdout.strip()
-                    wsl_wordlist = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(wordlist_path)], 
-                                                capture_output=True, text=True, timeout=5).stdout.strip()
+                    wsl_hc22000 = windows_to_wsl_path(hc22000_file)
+                    wsl_wordlist = windows_to_wsl_path(wordlist_path)
+                    
                     cmd = hashcat_cmd + ['-m', '22000', wsl_hc22000, wsl_wordlist, '--potfile-disable']
                 else:
                     cmd = hashcat_cmd + ['-m', '22000', hc22000_file, wordlist_path, '--potfile-disable']

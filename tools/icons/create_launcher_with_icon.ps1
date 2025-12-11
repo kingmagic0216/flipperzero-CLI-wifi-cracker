@@ -1,7 +1,7 @@
 # Create shortcut with icon for WiFi Cracker
 $currentDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $currentDir
-$launcherPath = Join-Path $rootDir "🚀 START WiFi Cracker (GUI).pyw"
+$launcherPath = Join-Path $rootDir "start_wifi_cracker_gui.pyw"
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktop "WiFi Cracker.lnk"
 $appShortcutPath = Join-Path $rootDir "WiFi Cracker.lnk"

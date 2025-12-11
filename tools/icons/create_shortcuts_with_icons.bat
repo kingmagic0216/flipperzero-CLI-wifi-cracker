@@ -12,11 +12,11 @@ cd /d "%~dp0\.."
 
 REM Create desktop shortcut
 echo Creating desktop shortcut...
-powershell -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\WiFi Cracker.lnk'); $Shortcut.TargetPath = '%CD%\🚀 START WiFi Cracker (GUI).pyw'; $Shortcut.WorkingDirectory = '%CD%'; $Shortcut.Description = 'Launch WiFi Cracker Web App'; $Shortcut.IconLocation = 'shell32.dll,48'; $Shortcut.Save()"
+powershell -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\WiFi Cracker.lnk'); $Shortcut.TargetPath = '%CD%\start_wifi_cracker_gui.pyw'; $Shortcut.WorkingDirectory = '%CD%'; $Shortcut.Description = 'Launch WiFi Cracker Web App'; $Shortcut.IconLocation = 'shell32.dll,48'; $Shortcut.Save()"
 
 REM Create app folder shortcut
 echo Creating app folder shortcut...
-powershell -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%CD%\WiFi Cracker.lnk'); $Shortcut.TargetPath = '%CD%\🚀 START WiFi Cracker (GUI).pyw'; $Shortcut.WorkingDirectory = '%CD%'; $Shortcut.Description = 'Launch WiFi Cracker Web App'; $Shortcut.IconLocation = 'shell32.dll,48'; $Shortcut.Save()"
+powershell -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%CD%\WiFi Cracker.lnk'); $Shortcut.TargetPath = '%CD%\start_wifi_cracker_gui.pyw'; $Shortcut.WorkingDirectory = '%CD%'; $Shortcut.Description = 'Launch WiFi Cracker Web App'; $Shortcut.IconLocation = 'shell32.dll,48'; $Shortcut.Save()"
 
 echo.
 echo ✓ Shortcuts created successfully!

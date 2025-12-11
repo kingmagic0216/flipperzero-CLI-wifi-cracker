@@ -10,7 +10,7 @@ echo.
 
 cd /d "%~dp0"
 
-powershell -ExecutionPolicy Bypass -File "tools\Fix Icon.ps1"
+powershell -ExecutionPolicy Bypass -File "tools\icons\fix_icon.ps1"
 
 echo.
 echo ═══════════════════════════════════════════════════════

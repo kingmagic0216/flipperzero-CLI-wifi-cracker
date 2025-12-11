@@ -1,29 +1,42 @@
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║              📁 Repository Structure 📁                     ║
+║              Repository Structure                            ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 
-📱 ROOT LEVEL (Launcher Files Only)
+ROOT LEVEL (Launcher Files Only)
    
-   🚀 START WiFi Cracker (GUI).pyw  ← START HERE!
-   🚀 START WiFi Cracker.bat        ← Alternative launcher
-   app.py                            ← Web server
-   requirements.txt                  ← Python dependencies
-   LICENSE                           ← License file
-   .gitignore                        ← Git ignore rules
+   start_wifi_cracker_gui.pyw  ← START HERE!
+   start_wifi_cracker.bat      ← Alternative launcher
+   app.py                       ← Web server
+   requirements.txt             ← Python dependencies
+   LICENSE                      ← License file
+   .gitignore                   ← Git ignore rules
 
 ═══════════════════════════════════════════════════════════════
 
-📚 docs/ - Documentation
+docs/ - Documentation
    
    • ICON_SETUP.md
    • README.txt
+   • INSTALL_TOOLS.md
+   • README_WEB.md
+   • SECURITY.md
+   • TOOLS_SETUP.md
+   • FOLDER_STRUCTURE.txt
 
 ═══════════════════════════════════════════════════════════════
 
-🔧 scripts/ - Original CLI Scripts
+scripts/ - Scripts
    
+   • install/ - Installation scripts
+     - install_tools.ps1
+     - install_tools.bat
+     - install_tools_auto.ps1
+     - setup_hashcat.ps1
+     - extract_and_setup_hashcat.ps1
+     - add_hashcat_to_path.ps1
+     - install_wsl_tools.sh
    • bruteforce_attack/
      - bruteforce_attack.py
      - bruteforce_attack_timer.py
@@ -31,14 +44,23 @@
 
 ═══════════════════════════════════════════════════════════════
 
-⚙️ config/ - Configuration Files
+config/ - Configuration Files
    
    (Empty - for future configuration files)
 
 ═══════════════════════════════════════════════════════════════
 
-🛠️ tools/ - Helper Tools and Flipper Zero CLI
+tools/ - Helper Tools and Flipper Zero CLI
    
+   • icons/ - Icon setup scripts
+     - add_icon_to_launcher.bat
+     - fix_icon.bat
+     - fix_icon.ps1
+     - create_icon_launcher.bat
+     - create_launcher_with_icon.ps1
+     - create_launcher_with_icon.vbs
+     - create_shortcuts_with_icons.bat
+     - test_icon.ps1
    • flipperzero_protobuf_py/ (Flipper Zero protobuf library)
    • src/ (CLI helper modules)
      - cli_helpers.py
@@ -47,19 +69,13 @@
    • clipper.py (Flipper CLI tool)
    • rpc.py (RPC communication module)
    • Create Desktop Shortcut.bat
-   • Create Icon Launcher.bat
-   • Create Launcher with Icon.ps1
-   • Create Launcher with Icon.vbs
-   • Create Shortcuts with Icons.bat
-   • Fix Icon.ps1
-   • Test Icon.ps1
    • README.md
    • README_ICONS.md
    • requirements.txt
 
 ═══════════════════════════════════════════════════════════════
 
-📁 Runtime Folders (Auto-created)
+Runtime Folders (Auto-created)
    
    • temp/ - Temporary files
    • uploads/ - Uploaded files

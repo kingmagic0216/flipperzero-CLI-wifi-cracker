@@ -4,7 +4,7 @@ $testPath = "$PSScriptRoot\..\WiFi Cracker Test.lnk"
 
 # Test icon 48 (lock)
 $Shortcut = $WshShell.CreateShortcut($testPath)
-$Shortcut.TargetPath = "$PSScriptRoot\..\🚀 START WiFi Cracker (GUI).pyw"
+$Shortcut.TargetPath = "$PSScriptRoot\..\start_wifi_cracker_gui.pyw"
 $Shortcut.WorkingDirectory = "$PSScriptRoot\.."
 $Shortcut.Description = "Test - Lock Icon"
 $Shortcut.IconLocation = "C:\Windows\System32\shell32.dll,48"

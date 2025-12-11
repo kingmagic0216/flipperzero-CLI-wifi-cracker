@@ -100,20 +100,37 @@ def get_tool_command(tool_name):
         exe_path = check_external_tool(tool_name + '.exe')
         if exe_path:
             return exe_path
-        # Try WSL if tool not found natively
+        # Try regular name in Windows PATH
         tool_path = check_external_tool(tool_name)
-        if not tool_path:
-            # Check if WSL is available and tool exists in WSL
-            try:
-                result = subprocess.run(['wsl', 'which', tool_name], capture_output=True, text=True, timeout=5)
-                if result.returncode == 0 and result.stdout.strip():
-                    # Return WSL command wrapper
-                    return ['wsl', tool_name]
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                pass
-    tool_path = check_external_tool(tool_name)
-    if tool_path:
-        return tool_path
+        if tool_path:
+            return tool_path
+        # Check if WSL is available and tool exists in WSL
+        try:
+            result = subprocess.run(['wsl', 'which', tool_name], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                # Return WSL command wrapper
+                return ['wsl', tool_name]
+            # If which failed, try direct execution to verify tool exists
+            # Some WSL distributions might not have 'which' or it might behave differently
+            verify_result = subprocess.run(['wsl', tool_name, '--version'], 
+                                          capture_output=True, text=True, timeout=5)
+            if verify_result.returncode == 0 or '--version' in verify_result.stderr or '--version' in verify_result.stdout:
+                # Tool exists (even if --version flag doesn't work, tool responded)
+                return ['wsl', tool_name]
+        except FileNotFoundError:
+            # WSL not installed
+            pass
+        except subprocess.TimeoutExpired:
+            # WSL check timed out
+            pass
+        except Exception:
+            # Any other error - silently continue
+            pass
+    else:
+        # Non-Windows: check system PATH
+        tool_path = check_external_tool(tool_name)
+        if tool_path:
+            return tool_path
     # Return original name if not found (will fail with better error message)
     return tool_name
 
@@ -121,10 +138,23 @@ def windows_to_wsl_path(windows_path):
     r"""Convert a Windows path to a WSL path (e.g. C:\Users -> /mnt/c/Users)"""
     windows_path = os.path.abspath(windows_path)
     drive, tail = os.path.splitdrive(windows_path)
+    
+    if not drive:
+        # No drive letter, might be a UNC path or relative path
+        raise ValueError(f"Cannot convert path without drive letter: {windows_path}")
+    
     drive = drive.lower().replace(':', '')
-    # Convert backslashes to forward slashes and prepend WSL mount point
-    # Handle both separator types just in case
+    # Convert backslashes to forward slashes
+    # tail from splitdrive starts with \ (e.g., \Users\file.txt)
     tail = tail.replace('\\', '/')
+    # Normalize: remove leading slash if present, then add it back
+    # This handles cases where tail might be empty or have multiple slashes
+    tail = tail.lstrip('/')
+    if tail:
+        tail = '/' + tail
+    else:
+        tail = '/'
+    
     return f'/mnt/{drive}{tail}'
 
 def allowed_file(filename, file_type='pcap'):
@@ -141,15 +171,47 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
         hcxpcapngtool_cmd = get_tool_command('hcxpcapngtool')
         hashcat_cmd = get_tool_command('hashcat')
         
-        if hcxpcapngtool_cmd == 'hcxpcapngtool' and not check_external_tool('hcxpcapngtool') and not check_external_tool('hcxpcapngtool.exe'):
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools (in Windows PATH or WSL).'
-            return
+        # Validate hcxpcapngtool: if get_tool_command returns the string name, tool wasn't found
+        # If it returns a list, it's a WSL command (valid)
+        # If it returns a path string, it's a native tool (valid)
+        if isinstance(hcxpcapngtool_cmd, str) and hcxpcapngtool_cmd == 'hcxpcapngtool':
+            # Tool not found - try one more WSL check as fallback (in case WSL wasn't ready earlier)
+            try:
+                wsl_check = subprocess.run(['wsl', 'which', 'hcxpcapngtool'], 
+                                         capture_output=True, text=True, timeout=10)
+                if wsl_check.returncode == 0 and wsl_check.stdout.strip():
+                    # Found in WSL - update command
+                    hcxpcapngtool_cmd = ['wsl', 'hcxpcapngtool']
+                else:
+                    # Not found anywhere
+                    jobs[job_id]['status'] = 'error'
+                    jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hcxtools\nSee docs/INSTALL_TOOLS.md for more instructions.'
+                    return
+            except Exception:
+                # WSL check failed - tool not available
+                jobs[job_id]['status'] = 'error'
+                jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hcxtools\nSee docs/INSTALL_TOOLS.md for more instructions.'
+                return
         
-        if hashcat_cmd == 'hashcat' and not check_external_tool('hashcat') and not check_external_tool('hashcat.exe'):
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = 'hashcat not found. Please install hashcat (in Windows PATH or WSL).'
-            return
+        # Validate hashcat similarly
+        if isinstance(hashcat_cmd, str) and hashcat_cmd == 'hashcat':
+            # Tool not found - try one more WSL check as fallback
+            try:
+                wsl_check = subprocess.run(['wsl', 'which', 'hashcat'], 
+                                         capture_output=True, text=True, timeout=10)
+                if wsl_check.returncode == 0 and wsl_check.stdout.strip():
+                    # Found in WSL - update command
+                    hashcat_cmd = ['wsl', 'hashcat']
+                else:
+                    # Not found anywhere
+                    jobs[job_id]['status'] = 'error'
+                    jobs[job_id]['message'] = 'hashcat not found. Please install hashcat (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hashcat\nSee docs/INSTALL_TOOLS.md for more instructions.'
+                    return
+            except Exception:
+                # WSL check failed - tool not available
+                jobs[job_id]['status'] = 'error'
+                jobs[job_id]['message'] = 'hashcat not found. Please install hashcat (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hashcat\nSee docs/INSTALL_TOOLS.md for more instructions.'
+                return
         
         jobs[job_id]['status'] = 'processing'
         jobs[job_id]['message'] = 'Converting PCAP to hc22000 format...'
@@ -178,8 +240,46 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                 # WSL command: ['wsl', 'hcxpcapngtool']
                 # Convert Windows path to WSL path manually to avoid escaping issues
                 if platform.system() == 'Windows':
-                    wsl_hc22000 = windows_to_wsl_path(hc22000_file)
-                    wsl_pcap = windows_to_wsl_path(pcap_path)
+                    try:
+                        wsl_hc22000 = windows_to_wsl_path(hc22000_file)
+                        wsl_pcap = windows_to_wsl_path(pcap_path)
+                    except ValueError as e:
+                        jobs[job_id]['status'] = 'error'
+                        jobs[job_id]['message'] = f'Path conversion error: {str(e)}. Windows path: {pcap_path}'
+                        return
+                    
+                    # Ensure output directory exists in WSL
+                    wsl_output_dir = os.path.dirname(wsl_hc22000)
+                    mkdir_result = subprocess.run(
+                        ['wsl', 'mkdir', '-p', wsl_output_dir],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if mkdir_result.returncode != 0:
+                        jobs[job_id]['status'] = 'error'
+                        jobs[job_id]['message'] = f'Failed to create output directory in WSL: {wsl_output_dir}\nError: {mkdir_result.stderr}'
+                        return
+                    
+                    # Verify file exists from WSL's perspective
+                    check_result = subprocess.run(
+                        ['wsl', 'test', '-f', wsl_pcap],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if check_result.returncode != 0:
+                        # Try to get more info about why it failed
+                        ls_result = subprocess.run(
+                            ['wsl', 'ls', '-la', wsl_pcap],
+                            capture_output=True,
+                            text=True,
+                            timeout=5
+                        )
+                        ls_error = ls_result.stderr if ls_result.stderr else 'File not found'
+                        jobs[job_id]['status'] = 'error'
+                        jobs[job_id]['message'] = f'PCAP file not accessible from WSL.\nWindows path: {pcap_path}\nWSL path: {wsl_pcap}\nWSL error: {ls_error}\n\nMake sure the file is in a location accessible by WSL (typically C:\\Users or D:\\ drives).'
+                        return
                     
                     cmd = hcxpcapngtool_cmd + ['-o', wsl_hc22000, wsl_pcap]
                 else:
@@ -207,7 +307,10 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
             error_msg = result.stderr if result.stderr else result.stdout
             # Include command and paths in error for debugging
             cmd_str = ' '.join(cmd) if isinstance(cmd, list) else str(cmd)
-            jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}\nCommand: {cmd_str}\nPCAP path: {pcap_path}'
+            if isinstance(hcxpcapngtool_cmd, list) and platform.system() == 'Windows':
+                jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}\nCommand: {cmd_str}\nWindows PCAP path: {pcap_path}\nWSL PCAP path: {wsl_pcap}\nWindows output path: {hc22000_file}\nWSL output path: {wsl_hc22000}'
+            else:
+                jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}\nCommand: {cmd_str}\nPCAP path: {pcap_path}\nOutput path: {hc22000_file}'
             return
         
         jobs[job_id]['message'] = 'Running hashcat dictionary attack...'

@@ -1,10 +1,10 @@
 import os
 import subprocess
 import threading
-import time
 import platform
 import glob
 import secrets
+import json
 from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 from werkzeug.utils import secure_filename
 from functools import wraps
@@ -28,8 +28,43 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs('temp', exist_ok=True)
 os.makedirs('wordlists', exist_ok=True)
 
-# Store job status
-jobs = {}
+# Job persistence file
+JOBS_FILE = 'jobs.json'
+
+def load_jobs():
+    """Load jobs from persistent storage"""
+    if os.path.exists(JOBS_FILE):
+        try:
+            with open(JOBS_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+def save_jobs():
+    """Save jobs to persistent storage"""
+    try:
+        with open(JOBS_FILE, 'w') as f:
+            json.dump(jobs, f, indent=2)
+    except IOError:
+        pass  # Silently fail if we can't write
+
+# Store job status (load from disk on startup)
+jobs = load_jobs()
+
+def update_job_status(job_id, status=None, message=None, password=None):
+    """Update job status and persist to disk"""
+    if job_id not in jobs:
+        jobs[job_id] = {'status': 'queued', 'message': '', 'password': None}
+    
+    if status is not None:
+        jobs[job_id]['status'] = status
+    if message is not None:
+        jobs[job_id]['message'] = message
+    if password is not None:
+        jobs[job_id]['password'] = password
+    
+    save_jobs()
 
 # Authentication decorator
 def check_auth(username, password):
@@ -82,6 +117,22 @@ def check_external_tool(tool_name):
         if os.path.exists(local_tool):
             return local_tool
     
+    # Check hashcat folder if tool is hashcat
+    if tool_name == 'hashcat':
+        hashcat_dirs = [
+            os.path.join(os.path.dirname(__file__), 'hashcat-7.1.2', 'hashcat-7.1.2'),
+            os.path.join(os.path.dirname(__file__), 'hashcat-7.1.2'),
+        ]
+        for hashcat_dir in hashcat_dirs:
+            if os.path.exists(hashcat_dir):
+                hashcat_exe = os.path.join(hashcat_dir, 'hashcat.exe')
+                if os.path.exists(hashcat_exe):
+                    return hashcat_exe
+                # Also check for hashcat.bin (Linux version)
+                hashcat_bin = os.path.join(hashcat_dir, 'hashcat.bin')
+                if os.path.exists(hashcat_bin):
+                    return hashcat_bin
+    
     # Check system PATH
     tool_path = shutil.which(tool_name)
     if tool_path:
@@ -106,25 +157,28 @@ def get_tool_command(tool_name):
             return tool_path
         # Check if WSL is available and tool exists in WSL
         try:
-            result = subprocess.run(['wsl', 'which', tool_name], capture_output=True, text=True, timeout=5)
+            # Use 'which' command to find tool in WSL
+            result = subprocess.run(['wsl', 'which', tool_name], 
+                                  capture_output=True, text=True, timeout=15)
             if result.returncode == 0 and result.stdout.strip():
                 # Return WSL command wrapper
                 return ['wsl', tool_name]
             # If which failed, try direct execution to verify tool exists
             # Some WSL distributions might not have 'which' or it might behave differently
             verify_result = subprocess.run(['wsl', tool_name, '--version'], 
-                                          capture_output=True, text=True, timeout=5)
-            if verify_result.returncode == 0 or '--version' in verify_result.stderr or '--version' in verify_result.stdout:
-                # Tool exists (even if --version flag doesn't work, tool responded)
+                                          capture_output=True, text=True, timeout=15)
+            # Check if tool responded (even with error, it means tool exists)
+            # 127 = command not found, anything else means tool exists
+            if verify_result.returncode != 127:
                 return ['wsl', tool_name]
         except FileNotFoundError:
-            # WSL not installed
+            # WSL not installed - will be caught in validation
             pass
         except subprocess.TimeoutExpired:
-            # WSL check timed out
+            # WSL check timed out - will try again in validation
             pass
         except Exception:
-            # Any other error - silently continue
+            # Any other error - will be caught in validation with fallback check
             pass
     else:
         # Non-Windows: check system PATH
@@ -175,22 +229,55 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
         # If it returns a list, it's a WSL command (valid)
         # If it returns a path string, it's a native tool (valid)
         if isinstance(hcxpcapngtool_cmd, str) and hcxpcapngtool_cmd == 'hcxpcapngtool':
-            # Tool not found - try one more WSL check as fallback (in case WSL wasn't ready earlier)
+            # Tool not found - try WSL check as fallback (in case WSL wasn't ready earlier)
+            wsl_found = False
             try:
+                # First try 'which' command
                 wsl_check = subprocess.run(['wsl', 'which', 'hcxpcapngtool'], 
-                                         capture_output=True, text=True, timeout=10)
+                                         capture_output=True, text=True, timeout=15)
                 if wsl_check.returncode == 0 and wsl_check.stdout.strip():
                     # Found in WSL - update command
                     hcxpcapngtool_cmd = ['wsl', 'hcxpcapngtool']
+                    wsl_found = True
                 else:
-                    # Not found anywhere
-                    jobs[job_id]['status'] = 'error'
-                    jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hcxtools\nSee docs/INSTALL_TOOLS.md for more instructions.'
+                    # Try direct execution as fallback
+                    verify_check = subprocess.run(['wsl', 'hcxpcapngtool', '--version'], 
+                                                 capture_output=True, text=True, timeout=15)
+                    if verify_check.returncode != 127:  # 127 = command not found
+                        # Tool exists (even if --version failed)
+                        hcxpcapngtool_cmd = ['wsl', 'hcxpcapngtool']
+                        wsl_found = True
+            except FileNotFoundError:
+                # WSL not installed
+                update_job_status(job_id, 'error', 'hcxpcapngtool not found and WSL is not installed. Please install hcxtools in Windows PATH or install WSL first.\n\nTo install WSL: wsl --install\nThen install hcxtools: sudo apt-get install hcxtools')
+                return
+            except subprocess.TimeoutExpired:
+                # WSL check timed out - try one more time
+                try:
+                    quick_check = subprocess.run(['wsl', 'hcxpcapngtool'], 
+                                                capture_output=True, text=True, timeout=5)
+                    if quick_check.returncode != 127:
+                        hcxpcapngtool_cmd = ['wsl', 'hcxpcapngtool']
+                        wsl_found = True
+                except:
+                    pass
+                if not wsl_found:
+                    update_job_status(job_id, 'error', 'hcxpcapngtool WSL check timed out. WSL may be slow to respond. Please try again or install hcxtools in Windows PATH.\n\nTo install in WSL, run: sudo apt-get install hcxtools')
                     return
-            except Exception:
-                # WSL check failed - tool not available
-                jobs[job_id]['status'] = 'error'
-                jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hcxtools\nSee docs/INSTALL_TOOLS.md for more instructions.'
+            except Exception as e:
+                # WSL check failed - try one more time with different approach
+                try:
+                    test_result = subprocess.run(['wsl', 'hcxpcapngtool'], 
+                                               capture_output=True, text=True, timeout=10)
+                    if test_result.returncode != 127:
+                        hcxpcapngtool_cmd = ['wsl', 'hcxpcapngtool']
+                        wsl_found = True
+                except:
+                    pass
+            
+            if not wsl_found:
+                # Not found anywhere
+                update_job_status(job_id, 'error', 'hcxpcapngtool not found. Please install hcxtools (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hcxtools\nSee docs/INSTALL_TOOLS.md for more instructions.')
                 return
         
         # Validate hashcat similarly
@@ -204,27 +291,22 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                     hashcat_cmd = ['wsl', 'hashcat']
                 else:
                     # Not found anywhere
-                    jobs[job_id]['status'] = 'error'
-                    jobs[job_id]['message'] = 'hashcat not found. Please install hashcat (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hashcat\nSee docs/INSTALL_TOOLS.md for more instructions.'
+                    update_job_status(job_id, 'error', 'hashcat not found. Please install hashcat (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hashcat\nSee docs/INSTALL_TOOLS.md for more instructions.')
                     return
             except Exception:
                 # WSL check failed - tool not available
-                jobs[job_id]['status'] = 'error'
-                jobs[job_id]['message'] = 'hashcat not found. Please install hashcat (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hashcat\nSee docs/INSTALL_TOOLS.md for more instructions.'
+                update_job_status(job_id, 'error', 'hashcat not found. Please install hashcat (in Windows PATH or WSL).\n\nTo install in WSL, run: sudo apt-get install hashcat\nSee docs/INSTALL_TOOLS.md for more instructions.')
                 return
         
-        jobs[job_id]['status'] = 'processing'
-        jobs[job_id]['message'] = 'Converting PCAP to hc22000 format...'
+        update_job_status(job_id, 'processing', 'Converting PCAP to hc22000 format...')
         
         # Validate PCAP file exists
         if not os.path.exists(pcap_path):
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = f'PCAP file not found: {pcap_path}'
+            update_job_status(job_id, 'error', f'PCAP file not found: {pcap_path}')
             return
         
         if not os.path.isfile(pcap_path):
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = f'Invalid PCAP file path: {pcap_path}'
+            update_job_status(job_id, 'error', f'Invalid PCAP file path: {pcap_path}')
             return
         
         # Ensure temp directory exists
@@ -244,8 +326,7 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                         wsl_hc22000 = windows_to_wsl_path(hc22000_file)
                         wsl_pcap = windows_to_wsl_path(pcap_path)
                     except ValueError as e:
-                        jobs[job_id]['status'] = 'error'
-                        jobs[job_id]['message'] = f'Path conversion error: {str(e)}. Windows path: {pcap_path}'
+                        update_job_status(job_id, 'error', f'Path conversion error: {str(e)}. Windows path: {pcap_path}')
                         return
                     
                     # Ensure output directory exists in WSL
@@ -257,8 +338,7 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                         timeout=5
                     )
                     if mkdir_result.returncode != 0:
-                        jobs[job_id]['status'] = 'error'
-                        jobs[job_id]['message'] = f'Failed to create output directory in WSL: {wsl_output_dir}\nError: {mkdir_result.stderr}'
+                        update_job_status(job_id, 'error', f'Failed to create output directory in WSL: {wsl_output_dir}\nError: {mkdir_result.stderr}')
                         return
                     
                     # Verify file exists from WSL's perspective
@@ -277,10 +357,10 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                             timeout=5
                         )
                         ls_error = ls_result.stderr if ls_result.stderr else 'File not found'
-                        jobs[job_id]['status'] = 'error'
-                        jobs[job_id]['message'] = f'PCAP file not accessible from WSL.\nWindows path: {pcap_path}\nWSL path: {wsl_pcap}\nWSL error: {ls_error}\n\nMake sure the file is in a location accessible by WSL (typically C:\\Users or D:\\ drives).'
+                        update_job_status(job_id, 'error', f'PCAP file not accessible from WSL.\nWindows path: {pcap_path}\nWSL path: {wsl_pcap}\nWSL error: {ls_error}\n\nMake sure the file is in a location accessible by WSL (typically C:\\Users or D:\\ drives).')
                         return
                     
+                    # Build command with WSL paths
                     cmd = hcxpcapngtool_cmd + ['-o', wsl_hc22000, wsl_pcap]
                 else:
                     cmd = hcxpcapngtool_cmd + ['-o', hc22000_file, pcap_path]
@@ -294,26 +374,38 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                 timeout=300
             )
         except FileNotFoundError:
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = f'hcxpcapngtool not found. Please install hcxtools. See docs/INSTALL_TOOLS.md for installation instructions.'
+            update_job_status(job_id, 'error', f'hcxpcapngtool not found. Please install hcxtools. See docs/INSTALL_TOOLS.md for installation instructions.')
             return
         except subprocess.TimeoutExpired:
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = 'PCAP conversion timed out after 5 minutes'
+            update_job_status(job_id, 'error', 'PCAP conversion timed out after 5 minutes')
             return
         
         if result.returncode != 0:
-            jobs[job_id]['status'] = 'error'
             error_msg = result.stderr if result.stderr else result.stdout
             # Include command and paths in error for debugging
             cmd_str = ' '.join(cmd) if isinstance(cmd, list) else str(cmd)
+            
+            # Additional debugging: check if files exist
+            debug_info = []
             if isinstance(hcxpcapngtool_cmd, list) and platform.system() == 'Windows':
-                jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}\nCommand: {cmd_str}\nWindows PCAP path: {pcap_path}\nWSL PCAP path: {wsl_pcap}\nWindows output path: {hc22000_file}\nWSL output path: {wsl_hc22000}'
+                # Check file existence in WSL
+                check_pcap = subprocess.run(['wsl', 'test', '-f', wsl_pcap], 
+                                          capture_output=True, text=True, timeout=5)
+                check_output_dir = subprocess.run(['wsl', 'test', '-d', wsl_output_dir], 
+                                                capture_output=True, text=True, timeout=5)
+                debug_info.append(f'WSL PCAP file exists: {check_pcap.returncode == 0}')
+                debug_info.append(f'WSL output dir exists: {check_output_dir.returncode == 0}')
+                debug_info.append(f'Windows PCAP exists: {os.path.exists(pcap_path)}')
+                debug_info.append(f'Windows output dir exists: {os.path.exists(os.path.dirname(hc22000_file))}')
+                
+                update_job_status(job_id, 'error', f'Error converting PCAP: {error_msg}\n\nCommand: {cmd_str}\n\nPaths:\n  Windows PCAP: {pcap_path}\n  WSL PCAP: {wsl_pcap}\n  Windows output: {hc22000_file}\n  WSL output: {wsl_hc22000}\n\nDebug info:\n  ' + '\n  '.join(debug_info))
             else:
-                jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}\nCommand: {cmd_str}\nPCAP path: {pcap_path}\nOutput path: {hc22000_file}'
+                debug_info.append(f'PCAP file exists: {os.path.exists(pcap_path)}')
+                debug_info.append(f'Output dir exists: {os.path.exists(os.path.dirname(hc22000_file))}')
+                update_job_status(job_id, 'error', f'Error converting PCAP: {error_msg}\n\nCommand: {cmd_str}\n\nPaths:\n  PCAP: {pcap_path}\n  Output: {hc22000_file}\n\nDebug info:\n  ' + '\n  '.join(debug_info))
             return
         
-        jobs[job_id]['message'] = 'Running hashcat dictionary attack...'
+        update_job_status(job_id, message='Running hashcat dictionary attack...')
         
         # Run hashcat attack
         try:
@@ -336,16 +428,15 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                 timeout=3600  # 1 hour timeout
             )
         except FileNotFoundError:
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = f'hashcat not found. Please install hashcat. See docs/INSTALL_TOOLS.md for installation instructions.'
+            update_job_status(job_id, 'error', f'hashcat not found. Please install hashcat. See docs/INSTALL_TOOLS.md for installation instructions.')
             return
         
         # Check if hashcat found the password by running --show
         try:
             if isinstance(hashcat_cmd, list):
                 if platform.system() == 'Windows':
-                    wsl_hc22000 = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(hc22000_file)], 
-                                                capture_output=True, text=True, timeout=5).stdout.strip()
+                    # Use consistent WSL path conversion
+                    wsl_hc22000 = windows_to_wsl_path(hc22000_file)
                     cmd = hashcat_cmd + ['-m', '22000', wsl_hc22000, '--show']
                 else:
                     cmd = hashcat_cmd + ['-m', '22000', hc22000_file, '--show']
@@ -359,8 +450,7 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                 timeout=30
             )
         except FileNotFoundError:
-            jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = f'hashcat not found. Please install hashcat. See docs/INSTALL_TOOLS.md for installation instructions.'
+            update_job_status(job_id, 'error', f'hashcat not found. Please install hashcat. See docs/INSTALL_TOOLS.md for installation instructions.')
             return
         
         # Parse hashcat --show output to get password
@@ -375,36 +465,30 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
                         # In hc22000 format: *hash*:password
                         password = parts[-1].strip()
                         if password:
-                            jobs[job_id]['status'] = 'success'
-                            jobs[job_id]['password'] = password
-                            jobs[job_id]['message'] = 'Password found!'
+                            update_job_status(job_id, 'success', f'Password found: {password}', password)
                             
                             # Cleanup
                             if os.path.exists(hc22000_file):
                                 os.remove(hc22000_file)
                             return
         
-        jobs[job_id]['status'] = 'failed'
-        jobs[job_id]['message'] = 'Password not found in wordlist'
+        update_job_status(job_id, 'failed', 'Password not found in wordlist')
         
         # Cleanup
         if os.path.exists(hc22000_file):
             os.remove(hc22000_file)
             
     except subprocess.TimeoutExpired:
-        jobs[job_id]['status'] = 'error'
-        jobs[job_id]['message'] = 'Operation timed out'
+        update_job_status(job_id, 'error', 'Operation timed out')
     except FileNotFoundError as e:
-        jobs[job_id]['status'] = 'error'
         if 'hcxpcapngtool' in str(e) or 'hcxpcapngtool.exe' in str(e):
-            jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools and ensure it is in your PATH. See docs/INSTALL_TOOLS.md for installation instructions.'
+            update_job_status(job_id, 'error', 'hcxpcapngtool not found. Please install hcxtools and ensure it is in your PATH. See docs/INSTALL_TOOLS.md for installation instructions.')
         elif 'hashcat' in str(e) or 'hashcat.exe' in str(e):
-            jobs[job_id]['message'] = 'hashcat not found. Please install hashcat and ensure it is in your PATH. See docs/INSTALL_TOOLS.md for installation instructions.'
+            update_job_status(job_id, 'error', 'hashcat not found. Please install hashcat and ensure it is in your PATH. See docs/INSTALL_TOOLS.md for installation instructions.')
         else:
-            jobs[job_id]['message'] = f'External tool not found: {str(e)}. Please check your installation.'
+            update_job_status(job_id, 'error', f'External tool not found: {str(e)}. Please check your installation.')
     except Exception as e:
-        jobs[job_id]['status'] = 'error'
-        jobs[job_id]['message'] = f'Error: {str(e)}'
+        update_job_status(job_id, 'error', f'Error: {str(e)}')
     finally:
         # Cleanup uploaded files
         try:
@@ -458,11 +542,7 @@ def upload_files():
     wordlist_file.save(wordlist_path)
     
     # Initialize job status
-    jobs[job_id] = {
-        'status': 'queued',
-        'message': 'Job queued...',
-        'password': None
-    }
+    update_job_status(job_id, 'queued', 'Job queued...')
     
     # Start attack in background thread
     thread = threading.Thread(
@@ -1026,6 +1106,13 @@ if __name__ == '__main__':
     print("\n" + "="*60)
     print("WiFi Cracker Web App")
     print("="*60)
+    
+    # Show job restoration status
+    job_count = len(jobs)
+    if job_count > 0:
+        print(f"\n[INFO] Restored {job_count} job(s) from previous session")
+    else:
+        print("\n[INFO] No previous jobs found")
     
     # Security status (using ASCII-safe characters)
     print("\n[SECURITY STATUS]")

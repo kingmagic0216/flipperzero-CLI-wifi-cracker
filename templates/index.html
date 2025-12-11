@@ -641,7 +641,9 @@
                 // Use common wordlist
                 const commonResponse = await fetch('/wordlists/common');
                 const commonData = await commonResponse.json();
-                const wordlistBlob = await fetch(`/${commonData.path}`).then(r => r.blob());
+                // Extract filename from path (e.g., 'wordlists/common_passwords.txt' -> 'common_passwords.txt')
+                const filename = commonData.path.split('/').pop() || 'common_passwords.txt';
+                const wordlistBlob = await fetch(`/wordlists/${filename}`).then(r => r.blob());
                 formData.append('wordlist_file', wordlistBlob, 'common_passwords.txt');
             }
 

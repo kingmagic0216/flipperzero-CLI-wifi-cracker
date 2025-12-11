@@ -465,13 +465,22 @@
                         pcapData.files.forEach(file => {
                             const item = document.createElement('div');
                             item.className = 'pcap-item';
-                            item.innerHTML = `
-                                <div>
-                                    <strong>${file.name}</strong><br>
-                                    <small>${formatFileSize(file.size)} • ${file.modified ? formatDate(file.modified) : 'unknown date'}</small>
-                                </div>
-                                <button class="btn-small" onclick="selectFlipperPcap('${file.path}', '${file.name}')">Select</button>
+                            
+                            // Create info section
+                            const infoDiv = document.createElement('div');
+                            infoDiv.innerHTML = `
+                                <strong>${file.name}</strong><br>
+                                <small>${formatFileSize(file.size)} • ${file.modified ? formatDate(file.modified) : 'unknown date'}</small>
                             `;
+                            
+                            // Create select button securely
+                            const btn = document.createElement('button');
+                            btn.className = 'btn-small';
+                            btn.textContent = 'Select';
+                            btn.onclick = function() { selectFlipperPcap(file.path, file.name); };
+                            
+                            item.appendChild(infoDiv);
+                            item.appendChild(btn);
                             pcapList.appendChild(item);
                         });
                     } else {
@@ -492,7 +501,11 @@
             document.getElementById('flipperPcaps').querySelectorAll('.pcap-item').forEach(item => {
                 item.style.background = 'white';
             });
-            event.target.closest('.pcap-item').style.background = '#e8f5e9';
+            // Find the clicked item's parent pcap-item element safely
+            const clickedItem = event.target.closest('.pcap-item');
+            if (clickedItem) {
+                clickedItem.style.background = '#e8f5e9';
+            }
             showStatus('success', `Selected: ${name}`, null);
         }
 

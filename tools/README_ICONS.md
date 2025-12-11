@@ -12,7 +12,7 @@ This will create shortcuts with lock icons on:
 
 ### Option 1: Create Shortcut Manually
 
-1. Right-click `🚀 START WiFi Cracker (GUI).pyw`
+1. Right-click `start_wifi_cracker_gui.pyw`
 2. Select "Create shortcut"
 3. Right-click the shortcut → Properties
 4. Click "Change Icon"

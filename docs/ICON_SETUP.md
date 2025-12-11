@@ -1,8 +1,8 @@
 # Setting Up Icons for Launchers
 
-## 🎨 Quick Fix
+## Quick Fix
 
-**Double-click:** `🎨 Fix Icon.bat` (in root folder)
+**Double-click:** `tools/icons/fix_icon.bat`
 
 This will recreate the shortcut with the lock icon.
 
@@ -20,7 +20,7 @@ This will recreate the shortcut with the lock icon.
 
 ### Method 2: Create New Shortcut
 
-1. **Right-click** `🚀 START WiFi Cracker (GUI).pyw`
+1. **Right-click** `start_wifi_cracker_gui.pyw`
 2. Select **"Create shortcut"**
 3. **Rename** it to "WiFi Cracker"
 4. **Right-click** the shortcut → **Properties**

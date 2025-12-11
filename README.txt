@@ -1,34 +1,34 @@
 ╔══════════════════════════════════════════════════════════════╗
 ║                                                              ║
-║          🔓 WiFi Cracker - Quick Start Guide 🔓            ║
+║          WiFi Cracker - Quick Start Guide                   ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 
-🚀 TO START:
+TO START:
 
-   Double-click: 🚀 START WiFi Cracker (GUI).pyw
+   Double-click: start_wifi_cracker_gui.pyw
 
    That's it! The app will handle everything automatically.
 
 ═══════════════════════════════════════════════════════════════
 
-📁 FOLDER STRUCTURE:
+FOLDER STRUCTURE:
 
-   📱 Root Level (Launcher Files Only)
-      • 🚀 START WiFi Cracker (GUI).pyw  ← START HERE
-      • 🚀 START WiFi Cracker.bat
+   Root Level (Launcher Files Only)
+      • start_wifi_cracker_gui.pyw  ← START HERE
+      • start_wifi_cracker.bat      ← Alternative launcher
       • app.py (web server)
       • requirements.txt
       • LICENSE
 
-   📚 docs/ - All documentation and guides
-   🔧 scripts/ - Original CLI attack scripts  
-   ⚙️ config/ - Configuration files
-   🛠️ tools/ - Helper tools and Flipper Zero CLI
+   docs/ - All documentation and guides
+   scripts/ - Original CLI attack scripts  
+   config/ - Configuration files
+   tools/ - Helper tools and Flipper Zero CLI
 
 ═══════════════════════════════════════════════════════════════
 
-📖 DOCUMENTATION:
+DOCUMENTATION:
 
    See docs/ folder for:
    • Quick start guide

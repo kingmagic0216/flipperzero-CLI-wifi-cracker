@@ -19,9 +19,9 @@ app.config['SECRET_KEY'] = os.environ.get('WIFI_CRACKER_SECRET_KEY') or secrets.
 
 # Authentication configuration
 # Set WIFI_CRACKER_PASSWORD environment variable to enable authentication
-# Set WIFI_CRACKER_HOST to '127.0.0.1' to restrict to localhost only
+# Set WIFI_CRACKER_HOST to '0.0.0.0' to enable network access (Default: '127.0.0.1' / localhost only)
 AUTH_PASSWORD = os.environ.get('WIFI_CRACKER_PASSWORD')
-RESTRICT_TO_LOCALHOST = os.environ.get('WIFI_CRACKER_HOST', '0.0.0.0') == '127.0.0.1'
+RESTRICT_TO_LOCALHOST = os.environ.get('WIFI_CRACKER_HOST', '127.0.0.1') == '127.0.0.1'
 
 # Create uploads directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -67,6 +67,56 @@ COMMON_PASSWORDS = [
 ALLOWED_EXTENSIONS_PCAP = {'pcap', 'cap', 'pcapng'}
 ALLOWED_EXTENSIONS_WORDLIST = {'txt'}
 
+def check_external_tool(tool_name):
+    """Check if an external tool is available in PATH or local tools directory"""
+    import shutil
+    
+    # First check local tools directory (for portable installations)
+    local_tools_dir = os.path.join(os.path.dirname(__file__), 'tools', 'bin')
+    if os.path.exists(local_tools_dir):
+        local_tool = os.path.join(local_tools_dir, tool_name)
+        if platform.system() == 'Windows':
+            local_tool_exe = local_tool + '.exe'
+            if os.path.exists(local_tool_exe):
+                return local_tool_exe
+        if os.path.exists(local_tool):
+            return local_tool
+    
+    # Check system PATH
+    tool_path = shutil.which(tool_name)
+    if tool_path:
+        return tool_path
+    # Try with .exe extension on Windows
+    if platform.system() == 'Windows':
+        tool_path = shutil.which(tool_name + '.exe')
+        if tool_path:
+            return tool_path
+    return None
+
+def get_tool_command(tool_name):
+    """Get the command to run for a tool, handling Windows .exe extension and WSL"""
+    if platform.system() == 'Windows':
+        # Try .exe extension first on Windows
+        exe_path = check_external_tool(tool_name + '.exe')
+        if exe_path:
+            return exe_path
+        # Try WSL if tool not found natively
+        tool_path = check_external_tool(tool_name)
+        if not tool_path:
+            # Check if WSL is available and tool exists in WSL
+            try:
+                result = subprocess.run(['wsl', 'which', tool_name], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and result.stdout.strip():
+                    # Return WSL command wrapper
+                    return ['wsl', tool_name]
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
+    tool_path = check_external_tool(tool_name)
+    if tool_path:
+        return tool_path
+    # Return original name if not found (will fail with better error message)
+    return tool_name
+
 def allowed_file(filename, file_type='pcap'):
     if file_type == 'pcap':
         return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS_PCAP
@@ -77,40 +127,109 @@ def allowed_file(filename, file_type='pcap'):
 def run_dictionary_attack(job_id, pcap_path, wordlist_path):
     """Run dictionary attack in background thread"""
     try:
+        # Check if required tools are available
+        hcxpcapngtool_cmd = get_tool_command('hcxpcapngtool')
+        hashcat_cmd = get_tool_command('hashcat')
+        
+        if hcxpcapngtool_cmd == 'hcxpcapngtool' and not check_external_tool('hcxpcapngtool') and not check_external_tool('hcxpcapngtool.exe'):
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools (in Windows PATH or WSL).'
+            return
+        
+        if hashcat_cmd == 'hashcat' and not check_external_tool('hashcat') and not check_external_tool('hashcat.exe'):
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = 'hashcat not found. Please install hashcat (in Windows PATH or WSL).'
+            return
+        
         jobs[job_id]['status'] = 'processing'
         jobs[job_id]['message'] = 'Converting PCAP to hc22000 format...'
         
         # Convert PCAP to hc22000
         hc22000_file = os.path.join('temp', f'{job_id}.hc22000')
-        result = subprocess.run(
-            ['hcxpcapngtool', '-o', hc22000_file, pcap_path],
-            capture_output=True,
-            text=True,
-            timeout=300
-        )
+        try:
+            # Handle WSL commands (list format) vs regular commands (string)
+            if isinstance(hcxpcapngtool_cmd, list):
+                # WSL command: ['wsl', 'hcxpcapngtool']
+                # Convert Windows path to WSL path if needed
+                if platform.system() == 'Windows':
+                    # Convert Windows paths to WSL paths
+                    wsl_hc22000 = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(hc22000_file)], 
+                                                capture_output=True, text=True, timeout=5).stdout.strip()
+                    wsl_pcap = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(pcap_path)], 
+                                            capture_output=True, text=True, timeout=5).stdout.strip()
+                    cmd = hcxpcapngtool_cmd + ['-o', wsl_hc22000, wsl_pcap]
+                else:
+                    cmd = hcxpcapngtool_cmd + ['-o', hc22000_file, pcap_path]
+            else:
+                cmd = [hcxpcapngtool_cmd, '-o', hc22000_file, pcap_path]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+        except FileNotFoundError:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = f'hcxpcapngtool not found. Please install hcxtools. See docs/INSTALL_TOOLS.md for installation instructions.'
+            return
         
         if result.returncode != 0:
             jobs[job_id]['status'] = 'error'
-            jobs[job_id]['message'] = f'Error converting PCAP: {result.stderr}'
+            error_msg = result.stderr if result.stderr else result.stdout
+            jobs[job_id]['message'] = f'Error converting PCAP: {error_msg}'
             return
         
         jobs[job_id]['message'] = 'Running hashcat dictionary attack...'
         
         # Run hashcat attack
-        hashcat_result = subprocess.run(
-            ['hashcat', '-m', '22000', hc22000_file, wordlist_path, '--potfile-disable'],
-            capture_output=True,
-            text=True,
-            timeout=3600  # 1 hour timeout
-        )
+        try:
+            # Handle WSL commands vs regular commands
+            if isinstance(hashcat_cmd, list):
+                if platform.system() == 'Windows':
+                    wsl_hc22000 = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(hc22000_file)], 
+                                                capture_output=True, text=True, timeout=5).stdout.strip()
+                    wsl_wordlist = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(wordlist_path)], 
+                                                capture_output=True, text=True, timeout=5).stdout.strip()
+                    cmd = hashcat_cmd + ['-m', '22000', wsl_hc22000, wsl_wordlist, '--potfile-disable']
+                else:
+                    cmd = hashcat_cmd + ['-m', '22000', hc22000_file, wordlist_path, '--potfile-disable']
+            else:
+                cmd = [hashcat_cmd, '-m', '22000', hc22000_file, wordlist_path, '--potfile-disable']
+            
+            hashcat_result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=3600  # 1 hour timeout
+            )
+        except FileNotFoundError:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = f'hashcat not found. Please install hashcat. See docs/INSTALL_TOOLS.md for installation instructions.'
+            return
         
         # Check if hashcat found the password by running --show
-        show_result = subprocess.run(
-            ['hashcat', '-m', '22000', hc22000_file, '--show'],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        try:
+            if isinstance(hashcat_cmd, list):
+                if platform.system() == 'Windows':
+                    wsl_hc22000 = subprocess.run(['wsl', 'wslpath', '-a', os.path.abspath(hc22000_file)], 
+                                                capture_output=True, text=True, timeout=5).stdout.strip()
+                    cmd = hashcat_cmd + ['-m', '22000', wsl_hc22000, '--show']
+                else:
+                    cmd = hashcat_cmd + ['-m', '22000', hc22000_file, '--show']
+            else:
+                cmd = [hashcat_cmd, '-m', '22000', hc22000_file, '--show']
+            
+            show_result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+        except FileNotFoundError:
+            jobs[job_id]['status'] = 'error'
+            jobs[job_id]['message'] = f'hashcat not found. Please install hashcat. See docs/INSTALL_TOOLS.md for installation instructions.'
+            return
         
         # Parse hashcat --show output to get password
         if show_result.returncode == 0 and show_result.stdout.strip():
@@ -143,6 +262,14 @@ def run_dictionary_attack(job_id, pcap_path, wordlist_path):
     except subprocess.TimeoutExpired:
         jobs[job_id]['status'] = 'error'
         jobs[job_id]['message'] = 'Operation timed out'
+    except FileNotFoundError as e:
+        jobs[job_id]['status'] = 'error'
+        if 'hcxpcapngtool' in str(e) or 'hcxpcapngtool.exe' in str(e):
+            jobs[job_id]['message'] = 'hcxpcapngtool not found. Please install hcxtools and ensure it is in your PATH. See docs/INSTALL_TOOLS.md for installation instructions.'
+        elif 'hashcat' in str(e) or 'hashcat.exe' in str(e):
+            jobs[job_id]['message'] = 'hashcat not found. Please install hashcat and ensure it is in your PATH. See docs/INSTALL_TOOLS.md for installation instructions.'
+        else:
+            jobs[job_id]['message'] = f'External tool not found: {str(e)}. Please check your installation.'
     except Exception as e:
         jobs[job_id]['status'] = 'error'
         jobs[job_id]['message'] = f'Error: {str(e)}'
@@ -348,6 +475,7 @@ def detect_flipper_using_cli_tools():
                 test_names = ['Flipper', 'flip', 'Lotak']
                 
                 for name in test_names:
+                    flipper = None
                     try:
                         serial_path = flipper_serial_by_name(name)
                         if serial_path and serial_path != '' and os.path.exists(serial_path):
@@ -373,6 +501,7 @@ def detect_flipper_using_cli_tools():
                                             'verified': True
                                         })
                                         flipper.close()
+                                        flipper = None
                                         continue
                                 except Exception:
                                     pass
@@ -384,7 +513,14 @@ def detect_flipper_using_cli_tools():
                                 'verified': has_protobuf
                             })
                             flipper.close()
+                            flipper = None
                     except Exception:
+                        # Ensure port is closed even if exception occurs
+                        if flipper is not None:
+                            try:
+                                flipper.close()
+                            except Exception:
+                                pass
                         pass
                         
         except ImportError as e:
@@ -611,8 +747,27 @@ def list_flipper_pcaps():
 def download_flipper_pcap():
     """Download PCAP file from Flipper Zero"""
     file_path = request.args.get('path')
-    if not file_path or not os.path.exists(file_path):
+    
+    if not file_path:
+        return jsonify({'error': 'No file path provided'}), 400
+        
+    # Security Check: Prevent LFI/Arbitrary File Read
+    # 1. Validate extension
+    file_path_lower = file_path.lower()
+    if not (file_path_lower.endswith('.pcap') or 
+            file_path_lower.endswith('.cap') or 
+            file_path_lower.endswith('.pcapng')):
+        return jsonify({'error': 'Security error: Invalid file type'}), 403
+        
+    # 2. Check existence
+    exists = os.path.exists(file_path)
+    
+    if not exists:
         return jsonify({'error': 'File not found'}), 404
+        
+    # 3. Ensure it's a file, not a directory
+    if not os.path.isfile(file_path):
+        return jsonify({'error': 'Invalid path'}), 400
     
     # Copy to uploads folder with unique name
     filename = os.path.basename(file_path)
@@ -621,7 +776,10 @@ def download_flipper_pcap():
     dest_path = os.path.join(app.config['UPLOAD_FOLDER'], dest_filename)
     
     import shutil
-    shutil.copy2(file_path, dest_path)
+    try:
+        shutil.copy2(file_path, dest_path)
+    except Exception as e:
+        return jsonify({'error': f'Copy failed: {str(e)}'}), 500
     
     return jsonify({
         'success': True,
@@ -672,12 +830,45 @@ def list_wordlists():
     
     return jsonify({'wordlists': wordlists})
 
+@app.route('/check/tools')
+@requires_auth
+def check_tools():
+    """Check if required external tools are installed"""
+    import shutil
+    tools_status = {}
+    
+    # Check hcxpcapngtool
+    hcxpcapngtool_path = check_external_tool('hcxpcapngtool')
+    if not hcxpcapngtool_path and platform.system() == 'Windows':
+        hcxpcapngtool_path = check_external_tool('hcxpcapngtool.exe')
+    tools_status['hcxpcapngtool'] = {
+        'installed': hcxpcapngtool_path is not None,
+        'path': hcxpcapngtool_path or 'Not found in PATH'
+    }
+    
+    # Check hashcat
+    hashcat_path = check_external_tool('hashcat')
+    if not hashcat_path and platform.system() == 'Windows':
+        hashcat_path = check_external_tool('hashcat.exe')
+    tools_status['hashcat'] = {
+        'installed': hashcat_path is not None,
+        'path': hashcat_path or 'Not found in PATH'
+    }
+    
+    all_installed = tools_status['hcxpcapngtool']['installed'] and tools_status['hashcat']['installed']
+    
+    return jsonify({
+        'all_installed': all_installed,
+        'tools': tools_status,
+        'message': 'All tools installed' if all_installed else 'Some tools are missing. See docs/INSTALL_TOOLS.md for installation instructions.'
+    })
+
 if __name__ == '__main__':
     # Determine host binding based on security settings
     if RESTRICT_TO_LOCALHOST:
         host = '127.0.0.1'
         access_msg = "Access from this computer only:"
-        access_urls = ["  • http://localhost:5000"]
+        access_urls = ["  * http://localhost:5000"]
     else:
         import socket
         hostname = socket.gethostname()
@@ -688,25 +879,33 @@ if __name__ == '__main__':
         host = '0.0.0.0'
         access_msg = "Access from any device on your network:"
         access_urls = [
-            f"  • http://localhost:5000",
-            f"  • http://{local_ip}:5000"
+            f"  * http://localhost:5000",
+            f"  * http://{local_ip}:5000"
         ]
+    
+    # Helper function to safely print (handles Windows console encoding)
+    def safe_print(text):
+        try:
+            print(text)
+        except UnicodeEncodeError:
+            # Fallback for Windows console that doesn't support emoji
+            print(text.encode('ascii', 'ignore').decode('ascii'))
     
     print("\n" + "="*60)
     print("WiFi Cracker Web App")
     print("="*60)
     
-    # Security status
-    print("\n🔒 Security Status:")
+    # Security status (using ASCII-safe characters)
+    print("\n[SECURITY STATUS]")
     if AUTH_PASSWORD:
-        print("  ✓ Authentication: ENABLED (password required)")
+        print("  [OK] Authentication: ENABLED (password required)")
     else:
-        print("  ⚠ Authentication: DISABLED (set WIFI_CRACKER_PASSWORD to enable)")
+        print("  [WARN] Authentication: DISABLED (set WIFI_CRACKER_PASSWORD to enable)")
     
     if RESTRICT_TO_LOCALHOST:
-        print("  ✓ Network Access: RESTRICTED to localhost only")
+        print("  [OK] Network Access: RESTRICTED to localhost only")
     else:
-        print("  ⚠ Network Access: OPEN to all devices on network")
+        print("  [WARN] Network Access: OPEN to all devices on network")
         print("    (Set WIFI_CRACKER_HOST=127.0.0.1 to restrict)")
     
     print(f"\n{access_msg}")
@@ -714,7 +913,7 @@ if __name__ == '__main__':
         print(url)
     
     if AUTH_PASSWORD:
-        print("\n💡 Login: Use any username and the password you set")
+        print("\n[INFO] Login: Use any username and the password you set")
     
     print("\nPress CTRL+C to stop the server")
     print("="*60 + "\n")

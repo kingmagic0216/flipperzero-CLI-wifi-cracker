@@ -32,6 +32,22 @@ Thumbs.db
 desktop.ini
 *.lnk
 
+# Temporary files
+test_output.txt
+*.tmp
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
 # Logs
 *.log
 

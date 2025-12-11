@@ -54,6 +54,7 @@ charset = string.printable  # Define the character set to be used
 timeout = 120
 
 # Platform-specific timeout setup
+timer = None  # Initialize timer variable for cleanup
 if platform.system() == 'Windows':
     # Windows: Use threading.Timer since SIGALRM is not available
     def timeout_handler():
@@ -94,6 +95,7 @@ except TimeoutError as e:
 finally:
     # Cleanup timeout
     if platform.system() == 'Windows':
-        timer.cancel()
+        if timer is not None:
+            timer.cancel()
     else:
         signal.alarm(0)
